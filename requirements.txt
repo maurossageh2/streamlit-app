@@ -3,9 +3,4 @@ opencv-python-headless
 ultralytics
 numpy
 Pillow
-streamlit
-opencv-python-headless
-ultralytics
-numpy
-Pillow
 
