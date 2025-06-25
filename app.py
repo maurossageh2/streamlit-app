@@ -8,27 +8,27 @@ import os
 import pandas as pd
 import re
 
-# Set wide layout
+# Configurar diseño ancho
 st.set_page_config(layout="wide")
 
-# Title
-st.title("Resistor Detection and Classification")
+# Título
+st.title("Detección y Clasificación de Resistencias")
 
-# Introduction
+# Introducción
 st.markdown("""
-Detect resistors and their values in an uploaded image.
+Detecta resistencias y sus valores en una imagen cargada.
 
-### Tips for Better Results
-To ensure accurate detection and classification:
-- **Good Lighting**: Use bright, even lighting to avoid shadows that can obscure color bands.
-- **High-Quality Images**: Upload clear, high-resolution images for better color accuracy.
-- **Proper Distance**: Maintain a reasonable **distance between resistors** to avoid overlapping detections.
-- **Clear Background**: Use a plain background to minimize distractions and improve detection accuracy.
+### Consejos para Mejores Resultados
+Para garantizar una detección y clasificación precisas:
+- **Buena Iluminación**: Usa una iluminación brillante y uniforme para evitar sombras que oculten las bandas de color.
+- **Imágenes de Alta Calidad**: Carga imágenes claras y de alta resolución para una mejor precisión en los colores.
+- **Distancia Adecuada**: Mantén una **distancia razonable entre resistencias** para evitar superposiciones en la detección.
+- **Fondo Limpio**: Usa un fondo simple para minimizar distracciones y mejorar la precisión de la detección.
 """)
 
-# Function to parse resistance values with k and M suffixes
+# Función para parsear valores de resistencia con sufijos k y M
 def parse_resistance(value):
-    if value == "Unknown":
+    if value == "Desconocido":
         return None
     try:
         match = re.match(r'^(\d*\.?\d+)([kM]?)$', value.strip(), re.IGNORECASE)
@@ -45,18 +45,18 @@ def parse_resistance(value):
     except (ValueError, AttributeError):
         return None
 
-# Function to format resistance values for display
+# Función para formatear valores de resistencia para mostrar
 def format_resistance(value):
     if value is None:
-        return "Invalid"
+        return "Inválido"
     if value >= 1e6:
-        return f"{value / 1e6:.2f}M ohms"
+        return f"{value / 1e6:.2f}M ohmios"
     elif value >= 1e3:
-        return f"{value / 1e3:.2f}k ohms"
+        return f"{value / 1e3:.2f}k ohmios"
     else:
-        return f"{value:.2f} ohms"
+        return f"{value:.2f} ohmios"
 
-# Load models
+# Cargar modelos
 @st.cache_resource
 def load_models():
     model_resistor = YOLO("./models/resistor_yolov8_v2.pt")
@@ -65,27 +65,27 @@ def load_models():
 
 model_resistor, model_value = load_models()
 
-# Initialize session state
+# Inicializar estado de la sesión
 if 'results' not in st.session_state:
     st.session_state.results = {}
 
-# Upload multiple images
-uploaded_files = st.file_uploader("Upload images containing resistors", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
+# Cargar múltiples imágenes
+uploaded_files = st.file_uploader("Carga imágenes que contengan resistencias", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
 
-# Clear previous results and process new files when uploaded
+# Limpiar resultados Belinda
 if uploaded_files:
-    # Reset session state for results
+    # Resetear estado de la sesión para resultados
     st.session_state.results = {}
     
     for uploaded_file in uploaded_files:
         file_key = uploaded_file.name
-        with st.spinner(f"Detecting resistors in {file_key}..."):
-            # Read and convert image
+        with st.spinner(f"Detectando resistencias en {file_key}..."):
+            # Leer y convertir imagen
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-            # Detect resistors
+            # Detectar resistencias
             results = model_resistor.predict(image_rgb)
             boxes = results[0].boxes
 
@@ -107,59 +107,81 @@ if uploaded_files:
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
                     roi_bgr = cv2.cvtColor(roi, cv2.COLOR_RGB2BGR)
                     cv2.imwrite(temp_file.name, roi_bgr)
-                    result = model_value(temp_file.name)
+                    # Ajustes para reducir "Desconocido"
+                    result = model_value(temp_file.name, conf=0.1, max_det=5)
                     temp_file_path = temp_file.name
 
                 pred_box = result[0].boxes
+                label = "Desconocido"
+                conf_score = None
+
+                # Opcional: Descomentar para depurar predicciones
+                # st.write(f"ROI {i+1}: {len(pred_box)} predicciones")
+                # for box in pred_box:
+                #     st.write(f"  Confianza: {box.conf.item():.3f}, Clase: {result[0].names[int(box.cls.item())]}")
+
                 if len(pred_box) > 0:
-                    top_pred = pred_box[0]
+                    # Obtener la mejor predicción
+                    top_pred = sorted(pred_box, key=lambda x: x.conf.item(), reverse=True)[0]
                     cls_id = int(top_pred.cls.item())
                     label = result[0].names[cls_id]
-                    resistor_values.append(label)
-                else:
-                    resistor_values.append("Unknown")
+                    conf_score = top_pred.conf.item()
 
-                # Clean up temporary file
+                resistor_values.append({
+                    'label': label,
+                    'conf_score': conf_score
+                })
+
+                # Limpiar archivo temporal
                 try:
                     os.remove(temp_file_path)
                 except OSError:
                     pass
 
-            # Annotate image with IDs and Values
+            # Anotar imagen con IDs y valores
             annotated_image = image_rgb.copy()
-            for idx, (x1, y1, x2, y2), label in zip(range(1, len(coords) + 1), coords, resistor_values):
-                cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 0, 0), 5)
+            image_height, image_width = image_rgb.shape[:2]
+
+            # Definir tamaño de fuente y grosor relativo a las dimensiones de la imagen
+            base_font_size = max(20, min(100, int(min(image_width, image_height) * 0.03)))
+            base_thickness = max(2, min(10, int(min(image_width, image_height) * 0.004)))
+
+            for idx, (x1, y1, x2, y2), res_val in zip(range(1, len(coords) + 1), coords, resistor_values):
+                # Dibujar cuadro delimitador
+                cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 0, 0), base_thickness)
                 
-                # Convert OpenCV image to PIL for Unicode text rendering
+                # Convertir imagen OpenCV a PIL para renderizar texto
                 pil_image = Image.fromarray(annotated_image)
                 draw = ImageDraw.Draw(pil_image)
                 
-                # Try to use Arial, fallback to DejaVu Sans or default sans-serif
+                # Cargar fuente
                 try:
-                    font = ImageFont.truetype("arial.ttf", 70)
+                    font = ImageFont.truetype("arial.ttf", base_font_size)
                 except IOError:
                     try:
-                        font = ImageFont.truetype("DejaVuSans.ttf", 70)
+                        font = ImageFont.truetype("DejaVuSans.ttf", base_font_size)
                     except IOError:
                         font = ImageFont.load_default()
+                        if base_font_size > 20:
+                            font.size = base_font_size
                 
-                # Draw ID in black
+                # Dibujar ID en negro
                 id_text = f"{idx}:"
-                id_position = (x1, y1 - 80)
+                id_position = (x1, y1 - int(base_font_size * 1.2))
                 draw.text(id_position, id_text, font=font, fill=(0, 0, 0))
                 
-                # Calculate position for value based on ID text width
+                # Calcular posición para el valor
                 id_width = draw.textlength(id_text, font=font)
-                value_position = (x1 + id_width, y1 - 80)
+                value_position = (x1 + id_width, y1 - int(base_font_size * 1.2))
                 
-                # Draw value and ohm symbol in dark blue
-                value_text = f"{label}Ω"
+                # Dibujar valor y símbolo de ohmios en azul oscuro
+                value_text = f"{res_val['label']}Ω"
                 draw.text(value_position, value_text, font=font, fill=(0, 0, 128))
                 
-                # Convert back to OpenCV format
+                # Convertir de vuelta a formato OpenCV
                 annotated_image = np.array(pil_image)
 
-            # Store results in session state
+            # Guardar resultados en el estado de la sesión
             st.session_state.results[file_key] = {
                 'image_rgb': image_rgb,
                 'annotated_image': annotated_image,
@@ -167,59 +189,60 @@ if uploaded_files:
                 'num_resistors': len(resistor_values)
             }
 
-# Display results for each processed file
+# Mostrar resultados para cada archivo procesado
 for file_key, result in st.session_state.results.items():
-    st.subheader(f"Results for {file_key}")
+    st.subheader(f"Resultados para {file_key}")
     col_img1, col_img2 = st.columns(2)
     with col_img1:
-        st.image(result['image_rgb'], caption="Original Image", use_container_width=True)
+        st.image(result['image_rgb'], caption="Imagen Original", use_container_width=True)
     with col_img2:
-        st.image(result['annotated_image'], caption=f"Detected {result['num_resistors']} resistors", use_container_width=True)
+        st.image(result['annotated_image'], caption=f"{result['num_resistors']} resistencias detectadas", use_container_width=True)
 
-    # Show table
+    # Mostrar tabla
     resistor_values = result['resistor_values']
     if resistor_values:
-        st.subheader("Detected Resistors")
+        st.subheader("Resistencias Detectadas")
         data = {
             "ID": list(range(1, len(resistor_values) + 1)),
-            "Value": resistor_values
+            "Valor": [rv['label'] for rv in resistor_values],
+            "Confianza": [f"{rv['conf_score']:.3f}" if rv['conf_score'] is not None else "N/A" for rv in resistor_values]
         }
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-        # Resistance calculation form
-        st.subheader("Resistance Calculation")
+        # Formulario de cálculo de resistencia
+        st.subheader("Cálculo de Resistencia")
         with st.form(key=f"calc_form_{file_key}"):
             calculation_type = st.selectbox(
-                "Select calculation type",
-                ["Series", "Parallel"],
+                "Selecciona el tipo de cálculo",
+                ["Serie", "Paralelo"],
                 key=f"calc_type_{file_key}"
             )
-            valid_indices = [i for i, val in enumerate(resistor_values) if parse_resistance(val) is not None]
+            valid_indices = [i for i, val in enumerate([rv['label'] for rv in resistor_values]) if parse_resistance(val) is not None]
             available_ids = [str(i + 1) for i in valid_indices]
             selected_ids = st.multiselect(
-                "Select resistor IDs for calculation",
+                "Selecciona los IDs de las resistencias para el cálculo",
                 available_ids,
                 key=f"select_ids_{file_key}"
             )
-            calculate_button = st.form_submit_button("Calculate")
+            calculate_button = st.form_submit_button("Calcular")
 
             if calculate_button and selected_ids:
                 indices = [int(id) - 1 for id in selected_ids]
-                selected_values = [parse_resistance(resistor_values[i]) for i in indices if parse_resistance(resistor_values[i]) is not None]
+                selected_values = [parse_resistance(resistor_values[i]['label']) for i in indices if parse_resistance(resistor_values[i]['label']) is not None]
 
                 if selected_values:
-                    if calculation_type == "Series":
+                    if calculation_type == "Serie":
                         total_resistance = sum(selected_values)
-                        st.write(f"Total resistance in **series**: **{format_resistance(total_resistance)}**")
-                    else:  # Parallel
+                        st.write(f"Resistencia total en **serie**: **{format_resistance(total_resistance)}**")
+                    else:  # Paralelo
                         try:
                             inverse_sum = sum(1 / val for val in selected_values)
                             total_resistance = 1 / inverse_sum
-                            st.write(f"Total resistance in **parallel**: **{format_resistance(total_resistance)}**")
+                            st.write(f"Resistencia total en **paralelo**: **{format_resistance(total_resistance)}**")
                         except ZeroDivisionError:
-                            st.error("Cannot calculate parallel resistance with zero-ohm resistors.")
+                            st.error("No se puede calcular la resistencia en paralelo con resistencias de cero ohmios.")
                 else:
-                    st.warning("No valid resistor values selected for calculation.")
+                    st.warning("No se seleccionaron valores de resistencia válidos para el cálculo.")
     else:
-        st.write("No resistors detected.")
+        st.write("No se detectaron resistencias.")
