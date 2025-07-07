@@ -115,11 +115,6 @@ if uploaded_files:
                 label = "Desconocido"
                 conf_score = None
 
-                # Opcional: Descomentar para depurar predicciones
-                # st.write(f"ROI {i+1}: {len(pred_box)} predicciones")
-                # for box in pred_box:
-                #     st.write(f"  Confianza: {box.conf.item():.3f}, Clase: {result[0].names[int(box.cls.item())]}")
-
                 if len(pred_box) > 0:
                     # Obtener la mejor predicción
                     top_pred = sorted(pred_box, key=lambda x: x.conf.item(), reverse=True)[0]
