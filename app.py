@@ -20,7 +20,7 @@ Detecta resistencias y sus valores en una imagen cargada.
 
 ### Consejos para Mejores Resultados
 Para garantizar una detección y clasificación precisas:
-- **Buena Iluminación**: Usa una iluminación brillante y uniforme para evitar sombras que oculten las bandas de color.
+- **Buena Iluminación**: Usa una iluminación brillante (**Fotos con flash**) y uniforme para evitar sombras que oculten las bandas de color.
 - **Imágenes de Alta Calidad**: Carga imágenes claras y de alta resolución para una mejor precisión en los colores.
 - **Distancia Adecuada**: Mantén una **distancia razonable entre resistencias** para evitar superposiciones en la detección.
 - **Fondo Limpio**: Usa un fondo simple para minimizar distracciones y mejorar la precisión de la detección.
